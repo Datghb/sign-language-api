@@ -1,40 +1,31 @@
-# backend/main.py
-from fastapi import FastAPI, File, UploadFile
-from fastapi.middleware.cors import CORSMiddleware
-import pickle
-import numpy as np
+from fastapi import FastAPI, UploadFile, File
+from fastapi.responses import JSONResponse
+import io
 import cv2
-from io import BytesIO
-from PIL import Image
+import numpy as np
+import pickle
+
+from pygments.formatters import img
 
 app = FastAPI()
 
-# CORS cho phép FE gọi API
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Load model
+# Load model.pkl
+# Khi load model, giả sử bạn load tuple
 with open("model.pkl", "rb") as f:
-    model = pickle.load(f)
+    model, _ = pickle.load(f)  # Trích xuất model từ tuple
 
-
-def read_imagefile(file) -> np.ndarray:
-    image = Image.open(BytesIO(file))
-    return cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-
+# Sau khi lấy model, bạn có thể gọi predict
+prediction = model.predict([img])  # Lúc này sẽ không bị lỗi nữa
 
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
-    image_bytes = await file.read()
-    img = read_imagefile(image_bytes)
+    # Đọc ảnh từ file
+    contents = await file.read()
+    np_arr = np.frombuffer(contents, np.uint8)
+    img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
-    # Resize, preprocess ảnh theo cách mà cậu đã dùng khi train
-    img_resized = cv2.resize(img, (64, 64)).flatten().reshape(1, -1)
+    # Xử lý ảnh với model
+    prediction = model.predict([img])  # Giả sử model của bạn dự đoán một ảnh
 
-    prediction = model.predict(img_resized)[0]
-    return {"result": prediction}
+    # Trả kết quả nhận diện
+    return JSONResponse(content={"prediction": prediction})
